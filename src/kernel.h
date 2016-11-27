@@ -2,23 +2,23 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-// Вычисление невязки rij во внутренних точках.
+// Р’С‹С‡РёСЃР»РµРЅРёРµ РЅРµРІСЏР·РєРё rij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 void CalcR( dim3 gridDim, cudaMatrix p, cudaUniformGrid grid, cudaMatrix r );
 
-// Вычисление значений gij во внутренних точках.
+// Р’С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ gij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 void CalcG( dim3 gridDim, cudaMatrix r, const NumericType alpha, cudaMatrix g );
 
-// Вычисление значений pij во внутренних точках, возвращается максимум норма.
+// Р’С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ pij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С…, РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РјР°РєСЃРёРјСѓРј РЅРѕСЂРјР°.
 NumericType CalcP( dim3 gridDim,
 	cudaMatrix g, const NumericType tau, cudaMatrix p,
 	cudaMatrix deviceBuffer );
 
-// Вычисление alpha.
+// Р’С‹С‡РёСЃР»РµРЅРёРµ alpha.
 CFraction CalcAlpha( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix deviceBuffer );
 
-// Вычисление tau.
+// Р’С‹С‡РёСЃР»РµРЅРёРµ tau.
 CFraction CalcTau( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix deviceBuffer );

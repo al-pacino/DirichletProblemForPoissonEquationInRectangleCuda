@@ -117,7 +117,7 @@ __device__ NumericType LaplasOperator( cudaMatrix matrix, cudaUniformGrid grid, 
 
 ///////////////////////////////////////////////////////////////////////////////
 
-// Вычисление невязки rij во внутренних точках.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ РЅРµРІВ¤Р·РєРё rij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 __global__ void kernelCalcR( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
 	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
@@ -128,7 +128,7 @@ __global__ void kernelCalcR( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 	}
 }
 
-// Вычисление значений gij во внутренних точках.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ gij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 __global__ void kernelCalcG( cudaMatrix r, const NumericType alpha, cudaMatrix g )
 {
 	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
@@ -139,7 +139,7 @@ __global__ void kernelCalcG( cudaMatrix r, const NumericType alpha, cudaMatrix g
 	}
 }
 
-// Вычисление значений pij во внутренних точках, возвращается максимум норма.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ pij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С…, РІРѕР·РІСЂР°С‰Р°РµС‚СЃВ¤ РјР°РєСЃРёРјСѓРј РЅРѕСЂРјР°.
 __global__ void kernelCalcP( cudaMatrix g, const NumericType tau, cudaMatrix p,
 	cudaMatrix differences )
 {
@@ -164,7 +164,7 @@ __global__ void kernelCalcP( cudaMatrix g, const NumericType tau, cudaMatrix p,
 	}
 }
 
-// Вычисление alpha.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ alpha.
 __global__ void kernelCalcAlpha( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix alphas )
 {
@@ -191,7 +191,7 @@ __global__ void kernelCalcAlpha( cudaMatrix r, cudaMatrix g, cudaUniformGrid gri
 	}
 }
 
-// Вычисление tau.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ tau.
 __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix taus )
 {
@@ -223,19 +223,19 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 const size_t SharedMemSize = BlockDim.x * BlockDim.y * sizeof( NumericType );
 const size_t SharedMem2Size = SharedMemSize * 2;
 
-// Вычисление невязки rij во внутренних точках.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ РЅРµРІВ¤Р·РєРё rij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 void CalcR( dim3 gridDim, cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
 	kernelCalcR<<<gridDim, BlockDim>>>( p, grid, r );
 }
 
-// Вычисление значений gij во внутренних точках.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ gij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 void CalcG( dim3 gridDim, cudaMatrix r, const NumericType alpha, cudaMatrix g )
 {
 	kernelCalcG<<<gridDim, BlockDim>>>( r, alpha, g );
 }
 
-// Вычисление значений pij во внутренних точках, возвращается максимум норма.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ pij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С…, РІРѕР·РІСЂР°С‰Р°РµС‚СЃВ¤ РјР°РєСЃРёРјСѓРј РЅРѕСЂРјР°.
 NumericType CalcP( dim3 gridDim,
 	cudaMatrix g, const NumericType tau, cudaMatrix p,
 	cudaMatrix deviceBuffer )
@@ -254,7 +254,7 @@ NumericType CalcP( dim3 gridDim,
 	return difference;
 }
 
-// Вычисление alpha.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ alpha.
 CFraction CalcAlpha( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix deviceBuffer )
@@ -275,7 +275,7 @@ CFraction CalcAlpha( dim3 gridDim,
 	return CFraction( numerator, denominator );
 }
 
-// Вычисление tau.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ tau.
 CFraction CalcTau( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 	cudaMatrix deviceBuffer )
@@ -300,7 +300,7 @@ CFraction CalcTau( dim3 gridDim,
 
 #if 0
 
-// Вычисление невязки rij во внутренних точках.
+// В¬С‹С‡РёСЃР»РµРЅРёРµ РЅРµРІВ¤Р·РєРё rij РІРѕ РІРЅСѓС‚СЂРµРЅРЅРёС… С‚РѕС‡РєР°С….
 __global__ void CalcRuni( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
 	const size_t xPerThread = 0;
