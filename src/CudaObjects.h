@@ -22,8 +22,8 @@ struct cudaMatrix {
 		return ((NumericType*)((char*)Matrix.ptr + y * Matrix.pitch))[x];
 	}
 
-	__device__ size_t SizeX() const { return Matrix.xsize; }
-	__device__ size_t SizeY() const { return Matrix.ysize; }
+	__host__ __device__ size_t SizeX() const { return Matrix.xsize; }
+	__host__ __device__ size_t SizeY() const { return Matrix.ysize; }
 };
 
 ///////////////////////////////////////////////////////////////////////////////

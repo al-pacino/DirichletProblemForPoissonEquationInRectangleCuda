@@ -108,7 +108,141 @@ NumericType TotalError( const CMatrix& p, const CUniformGrid& grid )
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class CProgram {
+void DumpMatrix( const CMatrix& matrix, const CUniformGrid& grid, ostream& output )
+{
+	for( size_t x = 0; x < matrix.SizeX(); x++ ) {
+		for( size_t y = 0; y < matrix.SizeY(); y++ ) {
+			output << grid.X[x] << '\t' << grid.Y[y] << '\t' << matrix( x, y ) << endl;
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+class CBaseProgram {
+public:
+	// Последовательная реализация.
+	static void Run( const size_t pointsX, const size_t pointsY, const CArea& area,
+		IIterationCallback& callback, const string& dumpFilename = "" );
+
+protected:
+	CUniformGrid grid;
+	CMatrix p;
+	NumericType difference;
+	// cuda objects
+	dim3 cudaGridDim;
+	cudaMatrix cudaP;
+	cudaMatrix cudaR;
+	cudaMatrix cudaG;
+	cudaMatrix cudaBuffer1; // auxiliary buffer 1
+	cudaMatrix cudaBuffer2; // auxiliary buffer 2
+	cudaUniformGrid cudaGrid;
+
+	CBaseProgram() {}
+	void Initialze();
+
+private:
+	void run( IIterationCallback& callback, const string& dumpFilename );
+};
+
+void CBaseProgram::Initialze()
+{
+	// cuda grid dim
+	cudaGridDim.x = DivUp( grid.X.Size() - 2, BlockDim.x );
+	cudaGridDim.y = DivUp( grid.Y.Size() - 2, BlockDim.y );
+
+	// cuda grid
+	cudaGrid.X.Allocate( grid.X );
+	cudaGrid.Y.Allocate( grid.Y );
+
+	// cuda auxiliary buffers
+	{
+		CMatrix tmp;
+		//tmp.Init( cudaGridDim.x * cudaGridDim.y, 2 );
+		tmp.Init( MultipleOfKFromN( 512, cudaGridDim.x * cudaGridDim.y ), 2 );
+		cudaBuffer1.Allocate( tmp );
+		tmp.Init( DivUp( cudaGridDim.x * cudaGridDim.y, 512 ), 2 );
+		cudaBuffer2.Allocate( tmp );
+	}
+
+	difference = numeric_limits<NumericType>::max();
+}
+
+void CBaseProgram::Run( const size_t pointsX, const size_t pointsY, const CArea& area,
+	IIterationCallback& callback, const string& dumpFilename )
+{
+	// Инициализируем grid.
+	CBaseProgram program;
+	program.grid.X.Init( area.X0, area.Xn, pointsX );
+	program.grid.Y.Init( area.Y0, area.Yn, pointsY );
+
+	// Выполняем инициализацию.
+	program.Initialze();
+
+	// Запускаем последовательную реализацию.
+	program.run( callback, dumpFilename );
+}
+
+void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename )
+{
+	// Выполняем нулевую итерацию (инициализацию).
+	if( !callback.BeginIteration() ) {
+		return;
+	}
+
+	CMatrix p( grid.X.Size(), grid.Y.Size() );
+	for( size_t x = 0; x < p.SizeX(); x++ ) {
+		p( x, 0 ) = Phi( grid.X[x], grid.Y[0] );
+		p( x, p.SizeY() - 1 ) = Phi( grid.X[x], grid.Y[p.SizeY() - 1] );
+	}
+	for( size_t y = 1; y < p.SizeY() - 1; y++ ) {
+		p( 0, y ) = Phi( grid.X[0], grid.Y[y] );
+		p( p.SizeX() - 1, y ) = Phi( grid.X[p.SizeX() - 1], grid.Y[y] );
+	}
+	cudaP.Allocate( p );
+	callback.EndIteration( difference );
+
+	// Выполняем первую итерацию.
+	if( !callback.BeginIteration() ) {
+		return;
+	}
+	{
+		//__debugbreak();
+		CMatrix r( grid.X.Size(), grid.Y.Size() );
+		cudaR.Allocate( r );
+
+		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
+		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer1, cudaBuffer2 );
+		difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+
+		cudaR.Dump( r );
+		cudaG.Allocate( r );
+	}
+	callback.EndIteration( difference );
+
+	// Выполняем остальные итерации.
+	while( callback.BeginIteration() ) {
+		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
+		const CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
+		CalcG( cudaGridDim, cudaR, alpha.Value(), cudaG );
+		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
+		difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+
+		callback.EndIteration( difference );
+	}
+
+	cudaP.Dump( p );
+	cout << "Total error: " << TotalError( p, grid ) << endl;
+
+	if( !dumpFilename.empty() ) {
+		ofstream outputFile( dumpFilename.c_str() );
+		DumpMatrix( p, grid, outputFile );
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+class CProgram : private CBaseProgram {
 public:
 	static void Run( size_t pointsX, size_t pointsY, const CArea& area,
 		IIterationCallback& callback );
@@ -127,16 +261,6 @@ private:
 	size_t beginY;
 	size_t endY;
 	CExchangeDefinitions exchangeDefinitions;
-	CUniformGrid grid;
-	CMatrix p;
-	NumericType difference;
-	// cuda objects
-	dim3 cudaGridDim;
-	cudaMatrix cudaP;
-	cudaMatrix cudaR;
-	cudaMatrix cudaG;
-	cudaMatrix cudaBuffer;
-	cudaUniformGrid cudaGrid;
 
 	CProgram( size_t pointsX, size_t pointsY, const CArea& area );
 
@@ -186,8 +310,7 @@ void CProgram::Run( size_t pointsX, size_t pointsY, const CArea& area,
 CProgram::CProgram( size_t pointsX, size_t pointsY, const CArea& area ) :
 	numberOfProcesses( CMpiSupport::NumberOfProccess() ),
 	rank( CMpiSupport::Rank() ),
-	pointsX( pointsX ), pointsY( pointsY ),
-	difference( numeric_limits<NumericType>::max() )
+	pointsX( pointsX ), pointsY( pointsY )
 {
 	setProcessXY();
 	rankX = rank % processesX;
@@ -215,19 +338,8 @@ CProgram::CProgram( size_t pointsX, size_t pointsY, const CArea& area ) :
 	// Заполняем список соседей с которыми будем обмениваться данными.
 	setExchangeDefinitions();
 
-	// cuda grid dim
-	cudaGridDim.x = ( grid.X.Size() - 3 ) / BlockDim.x + 1;
-	cudaGridDim.y = ( grid.Y.Size() - 3 ) / BlockDim.y + 1;
-
-	// cuda grid
-	cudaGrid.X.Allocate( grid.X );
-	cudaGrid.Y.Allocate( grid.Y );
-
-	// cuda auxiliary buffer
-	{
-		CMatrix tmp( cudaGridDim.x * cudaGridDim.y, 2 );
-		cudaBuffer.Allocate( tmp );
-	}
+	// Выполняем инициализацию.
+	CBaseProgram::Initialze();
 
 #ifdef _DEBUG
 	cout << "(" << rank << ")" << " {" << rankX << ", " << rankY << "}"
@@ -355,10 +467,10 @@ void CProgram::iteration1()
 	CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
 	exchangeDefinitions.Exchange( cudaR );
 
-	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer );
+	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer1, cudaBuffer2 );
 	allReduceFraction( tau );
 
-	difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer );
+	difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
 	allReduceDifference();
 
 	cudaR.Dump( r );
@@ -372,116 +484,17 @@ void CProgram::iteration2()
 	CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
 	exchangeDefinitions.Exchange( cudaR );
 
-	CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
+	CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
 	allReduceFraction( alpha );
 
 	CalcG( cudaGridDim, cudaR, alpha.Value(), cudaG );
 	exchangeDefinitions.Exchange( cudaG );
 
-	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
+	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
 	allReduceFraction( tau );
 
-	difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer );
+	difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
 	allReduceDifference();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void DumpMatrix( const CMatrix& matrix, const CUniformGrid& grid, ostream& output )
-{
-	for( size_t x = 0; x < matrix.SizeX(); x++ ) {
-		for( size_t y = 0; y < matrix.SizeY(); y++ ) {
-			output << grid.X[x] << '\t' << grid.Y[y] << '\t' << matrix( x, y ) << endl;
-		}
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-// Последовательная реализация.
-void Serial( const size_t pointsX, const size_t pointsY, const CArea& area,
-	IIterationCallback& callback, const string& dumpFilename = "" )
-{
-	// Инициализируем grid.
-	CUniformGrid grid;
-	grid.X.Init( area.X0, area.Xn, pointsX );
-	grid.Y.Init( area.Y0, area.Yn, pointsY );
-
-	NumericType difference = numeric_limits<NumericType>::max();
-
-	// cuda objects
-	dim3 cudaGridDim;
-	cudaMatrix cudaP;
-	cudaMatrix cudaR;
-	cudaMatrix cudaG;
-	cudaMatrix cudaBuffer;
-	cudaUniformGrid cudaGrid;
-
-	// cuda grid dim
-	cudaGridDim.x = ( grid.X.Size() - 3 ) / BlockDim.x + 1;
-	cudaGridDim.y = ( grid.Y.Size() - 3 ) / BlockDim.y + 1;
-
-	// cuda grid
-	cudaGrid.X.Allocate( grid.X );
-	cudaGrid.Y.Allocate( grid.Y );
-
-	// cuda auxiliary buffer
-	{
-		CMatrix tmp( cudaGridDim.x * cudaGridDim.y, 2 );
-		cudaBuffer.Allocate( tmp );
-	}
-
-	// Выполняем нулевую итерацию (инициализацию).
-	if( !callback.BeginIteration() ) {
-		return;
-	}
-
-	CMatrix p( grid.X.Size(), grid.Y.Size() );
-	for( size_t x = 0; x < p.SizeX(); x++ ) {
-		p( x, 0 ) = Phi( grid.X[x], grid.Y[0] );
-		p( x, p.SizeY() - 1 ) = Phi( grid.X[x], grid.Y[p.SizeY() - 1] );
-	}
-	for( size_t y = 1; y < p.SizeY() - 1; y++ ) {
-		p( 0, y ) = Phi( grid.X[0], grid.Y[y] );
-		p( p.SizeX() - 1, y ) = Phi( grid.X[p.SizeX() - 1], grid.Y[y] );
-	}
-	callback.EndIteration( difference );
-
-	cudaP.Allocate( p );
-
-	// Выполняем первую итерацию.
-	if( !callback.BeginIteration() ) {
-		return;
-	}
-	{
-		CMatrix r( grid.X.Size(), grid.Y.Size() );
-		cudaR.Allocate( r );
-
-		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
-		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer );
-		difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer );
-
-		cudaR.Dump( r );
-		cudaG.Allocate( r );
-	}
-	callback.EndIteration( difference );
-
-	// Выполняем остальные итерации.
-	while( callback.BeginIteration() ) {
-		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
-		const CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
-		CalcG( cudaGridDim, cudaR, alpha.Value(), cudaG );
-		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
-		difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer );
-
-		callback.EndIteration( difference );
-	}
-
-	if( !dumpFilename.empty() ) {
-		cout << "Total error: " << TotalError( p, grid ) << endl;
-		ofstream outputFile( dumpFilename.c_str() );
-		DumpMatrix( p, grid, outputFile );
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -528,7 +541,7 @@ void Main( const int argc, const char* const argv[] )
 		}
 
 		if( CMpiSupport::NumberOfProccess() == 1 ) {
-			Serial( pointsX, pointsY, Area, *callback, dumpFilename );
+			CBaseProgram::Run( pointsX, pointsY, Area, *callback, dumpFilename );
 		} else {
 			CProgram::Run( pointsX, pointsY, Area, *callback );
 		}
