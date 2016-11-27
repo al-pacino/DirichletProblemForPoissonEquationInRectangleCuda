@@ -1,15 +1,14 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
 #include <Std.h>
+#include <CudaSupport.h>
 #include <Definitions.h>
 #include <CudaObjects.h>
+#include <kernel.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 
 __device__ void BlockReduceMax( volatile NumericType* shared, NumericType value )
 {
-	size_t threadIndex = threadIdx.y * BlockSizeX + threadIdx.x;
+	size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
 
 	shared[threadIndex] = value;
 	__syncthreads();
@@ -52,7 +51,7 @@ __device__ void BlockReduceMax( volatile NumericType* shared, NumericType value 
 
 __device__ void BlockReduceSumTwo( volatile NumericType* shared, NumericType value1, NumericType value2 )
 {
-	size_t threadIndex = ( threadIdx.y * BlockSizeX + threadIdx.x ) * 2;
+	size_t threadIndex = ( threadIdx.y * blockDim.x + threadIdx.x ) * 2;
 
 	shared[threadIndex] = value1;
 	shared[threadIndex + 1] = value2;
@@ -121,8 +120,8 @@ __device__ NumericType LaplasOperator( cudaMatrix matrix, cudaUniformGrid grid, 
 // ¬ычисление нев€зки rij во внутренних точках.
 __global__ void kernelCalcR( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
-	size_t x = BlockSizeX * blockIdx.x + threadIdx.x + 1;
-	size_t y = BlockSizeY * blockIdx.y + threadIdx.y + 1;
+	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
+	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
 	
 	if( x < ( p.SizeX() - 1 ) && y < ( p.SizeY() - 1 ) ) {
 		r( x, y ) = LaplasOperator( p, grid, x, y ) - F( grid.X[x], grid.Y[y] );
@@ -132,8 +131,8 @@ __global__ void kernelCalcR( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 // ¬ычисление значений gij во внутренних точках.
 __global__ void kernelCalcG( cudaMatrix r, const NumericType alpha, cudaMatrix g )
 {
-	size_t x = BlockSizeX * blockIdx.x + threadIdx.x + 1;
-	size_t y = BlockSizeY * blockIdx.y + threadIdx.y + 1;
+	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
+	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
 
 	if( x < ( g.SizeX() - 1 ) && y < ( g.SizeY() - 1 ) ) {
 		g( x, y ) = r( x, y ) - alpha * g( x, y );
@@ -146,9 +145,9 @@ __global__ void kernelCalcP( cudaMatrix g, const NumericType tau, cudaMatrix p,
 {
 	extern __shared__ NumericType shared[];
 
-	size_t x = BlockSizeX * blockIdx.x + threadIdx.x + 1;
-	size_t y = BlockSizeY * blockIdx.y + threadIdx.y + 1;
-	size_t threadIndex = threadIdx.y * BlockSizeX + threadIdx.x;
+	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
+	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
 
 	NumericType difference = 0;
 	if( x < ( p.SizeX() - 1 ) && y < ( p.SizeY() - 1 ) ) {
@@ -171,9 +170,9 @@ __global__ void kernelCalcAlpha( cudaMatrix r, cudaMatrix g, cudaUniformGrid gri
 {
 	extern __shared__ NumericType shared[];
 
-	size_t x = BlockSizeX * blockIdx.x + threadIdx.x + 1;
-	size_t y = BlockSizeY * blockIdx.y + threadIdx.y + 1;
-	size_t threadIndex = threadIdx.y * BlockSizeX + threadIdx.x;
+	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
+	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;
@@ -198,9 +197,9 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 {
 	extern __shared__ NumericType shared[];
 
-	size_t x = BlockSizeX * blockIdx.x + threadIdx.x + 1;
-	size_t y = BlockSizeY * blockIdx.y + threadIdx.y + 1;
-	size_t threadIndex = threadIdx.y * BlockSizeX + threadIdx.x;
+	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
+	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;
@@ -221,34 +220,31 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 
 ///////////////////////////////////////////////////////////////////////////////
 
+const size_t SharedMemSize = BlockDim.x * BlockDim.y * sizeof( NumericType );
+const size_t SharedMem2Size = SharedMemSize * 2;
+
 // ¬ычисление нев€зки rij во внутренних точках.
 void CalcR( dim3 gridDim, cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
-	const dim3 blockDim( BlockSizeX, BlockSizeY );
-	kernelCalcR <<< gridDim, blockDim >>> ( p, grid, r );
+	kernelCalcR<<<gridDim, BlockDim>>>( p, grid, r );
 }
 
 // ¬ычисление значений gij во внутренних точках.
 void CalcG( dim3 gridDim, cudaMatrix r, const NumericType alpha, cudaMatrix g )
 {
-	const dim3 blockDim( BlockSizeX, BlockSizeY );
-	kernelCalcG <<< gridDim, blockDim >>> ( r, alpha, g );
+	kernelCalcG<<<gridDim, BlockDim>>>( r, alpha, g );
 }
 
 // ¬ычисление значений pij во внутренних точках, возвращаетс€ максимум норма.
-NumericType CalcP( dim3 gridDim, cudaMatrix g, const NumericType tau, cudaMatrix p )
+NumericType CalcP( dim3 gridDim,
+	cudaMatrix g, const NumericType tau, cudaMatrix p,
+	cudaMatrix deviceBuffer )
 {
-	const dim3 blockDim( BlockSizeX, BlockSizeY );
+	CMatrix m( gridDim.x * gridDim.y, 2 );
 
-	CMatrix m;
-	m.Init( gridDim.x * gridDim.y, 1 );
-	cudaMatrix differences;
-	differences.Allocate( m );
-	const size_t sharedMemSize = blockDim.x * blockDim.y * sizeof( NumericType );
+	kernelCalcP<<<gridDim, BlockDim, SharedMemSize>>>( g, tau, p, deviceBuffer );
 
-	kernelCalcP <<< gridDim, blockDim, sharedMemSize >>> ( g, tau, p, differences );
-
-	differences.Dump( m );
+	deviceBuffer.Dump( m );
 
 	NumericType difference = 0;
 	for( size_t i = 0; i < m.SizeX(); i++ ) {
@@ -260,19 +256,14 @@ NumericType CalcP( dim3 gridDim, cudaMatrix g, const NumericType tau, cudaMatrix
 
 // ¬ычисление alpha.
 CFraction CalcAlpha( dim3 gridDim,
-	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid )
+	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
+	cudaMatrix deviceBuffer )
 {
-	const dim3 blockDim( BlockSizeX, BlockSizeY );
+	CMatrix m( gridDim.x * gridDim.y, 2 );
 
-	CMatrix m;
-	m.Init( gridDim.x * gridDim.y, 2 );
-	cudaMatrix alphas;
-	alphas.Allocate( m );
-	const size_t sharedMemSize =  blockDim.x * blockDim.y * 2 * sizeof( NumericType );
+	kernelCalcAlpha<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, deviceBuffer );
 
-	kernelCalcAlpha <<< gridDim, blockDim, sharedMemSize >>> ( r, g, grid, alphas );
-
-	alphas.Dump( m );
+	deviceBuffer.Dump( m );
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;
@@ -286,19 +277,14 @@ CFraction CalcAlpha( dim3 gridDim,
 
 // ¬ычисление tau.
 CFraction CalcTau( dim3 gridDim,
-	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid )
+	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
+	cudaMatrix deviceBuffer )
 {
-	const dim3 blockDim( BlockSizeX, BlockSizeY );
+	CMatrix m( gridDim.x * gridDim.y, 2 );
 
-	CMatrix m;
-	m.Init( gridDim.x * gridDim.y, 2 );
-	cudaMatrix taus;
-	taus.Allocate( m );
-	const size_t sharedMemSize =  blockDim.x * blockDim.y * 2 * sizeof( NumericType );
+	kernelCalcTau<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, deviceBuffer );
 
-	kernelCalcTau <<< gridDim, blockDim, sharedMemSize >>> ( r, g, grid, taus );
-
-	taus.Dump( m );
+	deviceBuffer.Dump( m );
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;

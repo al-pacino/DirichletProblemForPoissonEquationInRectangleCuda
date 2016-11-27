@@ -1,7 +1,7 @@
 #include <Std.h>
 #include <Errors.h>
-#include <Definitions.h>
 #include <CudaSupport.h>
+#include <Definitions.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 

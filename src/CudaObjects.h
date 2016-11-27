@@ -65,38 +65,3 @@ struct cudaUniformGrid {
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-
-class cudaProgram {
-public:
-	const dim3 BlockDim;
-
-	cudaProgram() :
-		BlockDim( BlockSizeX, BlockSizeY )
-	{
-	}
-
-	cudaMatrix P;
-	cudaMatrix R;
-	cudaMatrix G;
-	CFraction Tau;
-	CFraction Alpha;
-	cudaUniformGrid Grid;
-
-	void CalcP();
-	void CalcR();
-	void CalcG();
-	void CalcTau();
-	void CalcAlpha();
-
-	dim3 GetGridDim() const { return gridDim; }
-	void SetGridDim();
-
-private:
-	cudaMatrix blockValues;
-	dim3 gridDim3;
-
-	cudaProgram( const cudaProgram& );
-	cudaProgram& operator=( const cudaProgram& );
-};
-
-///////////////////////////////////////////////////////////////////////////////

@@ -24,6 +24,7 @@
     <ClInclude Include="src\Definitions.h" />
     <ClInclude Include="src\Errors.h" />
     <ClInclude Include="src\IterationCallback.h" />
+    <ClInclude Include="src\kernel.h" />
     <ClInclude Include="src\MathObjects.h" />
     <ClInclude Include="src\MpiSupport.h" />
     <ClInclude Include="src\Std.h" />

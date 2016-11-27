@@ -30,6 +30,9 @@
     <ClInclude Include="src\CudaSupport.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="src\kernel.h">
+      <Filter>src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="src\kernel.cu">

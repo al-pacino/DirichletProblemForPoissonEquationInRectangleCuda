@@ -1,4 +1,5 @@
 #include <Std.h>
+#include <CudaSupport.h>
 #include <Definitions.h>
 #include <MathObjects.h>
 #include <Errors.h>
