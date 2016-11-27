@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{f637af71-b7e9-4e14-b6f7-171aab8202b1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Definitions.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Errors.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\IterationCallback.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MathObjects.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MpiSupport.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Std.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CudaObjects.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CudaSupport.h">
+      <Filter>src</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="src\kernel.cu">
+      <Filter>src</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MathObjects.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MpiSupport.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CudaObjects.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CudaSupport.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
