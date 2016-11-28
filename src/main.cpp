@@ -521,6 +521,9 @@ void Main( const int argc, const char* const argv[] )
 	{
 		CMpiTimer timer( programTime );
 
+		// Выбираем CUDA устройство.
+		SelectSuitableCudaDevice( cout );
+
 		// Используем только потоки ввода вывода iostream,
 		// поэтому отключаем синхронизацию ввода вывода со стандартной библиотекой C.
 		ios::sync_with_stdio( false );

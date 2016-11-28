@@ -5,22 +5,22 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void SelectSuitableCudaDevice()
+void SelectSuitableCudaDevice( ostream& out )
 {
 	int deviceCount = 0;
 	int suitableDevice = -1;
-	cudaGetDeviceCount( &deviceCount );
-	cerr << "Number of cuda devices: " << deviceCount << endl;
-	cerr << endl;
+	cudaCheck( cudaGetDeviceCount( &deviceCount ) );
+	out << "Number of cuda devices: " << deviceCount << endl;
+	out << endl;
 	for( int i = 0; i < deviceCount; i++ ) {
 		cudaDeviceProp deviceProp;
-		cudaGetDeviceProperties( &deviceProp, i );
-		cerr << "Device#" << left << setw( 13 ) << i
+		cudaCheck( cudaGetDeviceProperties( &deviceProp, i ) );
+		out << "Device#" << left << setw( 13 ) << i
 			<< ": " << deviceProp.name << endl;
-		cerr << "Compute capability  : " << deviceProp.major
+		out << "Compute capability  : " << deviceProp.major
 			<< "." << deviceProp.minor << endl;
-		cerr << "Total global memory : " << deviceProp.totalGlobalMem << endl; 
-		cerr << endl;
+		out << "Total global memory : " << deviceProp.totalGlobalMem << endl; 
+		out << endl;
 
 		if( deviceProp.major == 2 /* && deviceProp.minor == 0 */ ) {
 			suitableDevice = i;
@@ -30,12 +30,10 @@ void SelectSuitableCudaDevice()
 	if( suitableDevice == -1 ) {
 		throw CException( "Suitable cuda device was not found!" );
 	}
-
 	cudaCheck( cudaSetDevice( suitableDevice ) );
 
-	cerr << "Device#" << suitableDevice << " has been selected." << endl;
-	cerr << endl;
-	cerr << string( 64, '-' ) << endl << endl;
+	out << "Device#" << suitableDevice << " has been selected." << endl;
+	out << endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
