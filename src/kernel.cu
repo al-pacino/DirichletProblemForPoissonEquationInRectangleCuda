@@ -6,95 +6,102 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-__device__ void BlockReduceMax( volatile NumericType* shared,
+const dim3 BlockDim( BlockDimX, BlockDimY );
+const size_t BlockSize = BlockDimX * BlockDimY;
+const size_t SharedMemSize = BlockSize * sizeof( NumericType );
+const size_t SharedMem2Size = SharedMemSize * 2;
+
+///////////////////////////////////////////////////////////////////////////////
+
+__device__ void blockReduceMax( volatile NumericType* shared,
 	const size_t threadIndex, const NumericType value )
 {
 	shared[threadIndex] = value;
 	__syncthreads();
-	if( threadIndex < 256 ) {
+	if( BlockSize >= 512 && threadIndex < 256 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 256] );
 	}
 	__syncthreads();
-	if( threadIndex < 128 ) {
+	if( BlockSize >= 256 && threadIndex < 128 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 128] );
 	}
 	__syncthreads();
-	if( threadIndex < 64 ) {
+	if( BlockSize >= 128 && threadIndex < 64 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 128] );
 	}
 	__syncthreads();
-	if( threadIndex < 32 ) {
+	if( BlockSize >= 64 && threadIndex < 32 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 32] );
 	}
 	__syncthreads();
-	if( threadIndex < 16 ) {
+	if( BlockSize >= 32 && threadIndex < 16 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 16] );
 	}
 	__syncthreads();
-	if( threadIndex < 8 ) {
+	if( BlockSize >= 16 && threadIndex < 8 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 8] );
 	}
 	__syncthreads();
-	if( threadIndex < 4 ) {
+	if( BlockSize >= 8 && threadIndex < 4 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 4] );
 	}
 	__syncthreads();
-	if( threadIndex < 2 ) {
+	if( BlockSize >= 4 && threadIndex < 2 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 2] );
 	}
 	__syncthreads();
-	if( threadIndex < 1 ) {
+	if( BlockSize >= 2 && threadIndex < 1 ) {
 		shared[threadIndex] = max( shared[threadIndex], shared[threadIndex + 1] );
 	}
 }
 
-__device__ void BlockReduceSumTwo( volatile NumericType* shared,
+__device__ void blockReduceSumTwo( volatile NumericType* shared,
 	const size_t threadIndex, const NumericType value1, const NumericType value2 )
 {
 	shared[threadIndex] = value1;
 	shared[threadIndex + 1] = value2;
 	__syncthreads();
-	if( threadIndex < 512 ) {
+	if( BlockSize >= 512 && threadIndex < 512 ) {
 		shared[threadIndex] += shared[threadIndex + 512];
 		shared[threadIndex + 1] += shared[threadIndex + 512 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 256 ) {
+	if( BlockSize >= 256 && threadIndex < 256 ) {
 		shared[threadIndex] += shared[threadIndex + 256];
 		shared[threadIndex + 1] += shared[threadIndex + 256 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 128 ) {
+	if( BlockSize >= 128 && threadIndex < 128 ) {
 		shared[threadIndex] += shared[threadIndex + 128];
 		shared[threadIndex + 1] += shared[threadIndex + 128 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 64 ) {
+	if( BlockSize >= 64 && threadIndex < 64 ) {
 		shared[threadIndex] += shared[threadIndex + 64];
 		shared[threadIndex + 1] += shared[threadIndex + 64 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 32 ) {
+	if( BlockSize >= 32 && threadIndex < 32 ) {
 		shared[threadIndex] += shared[threadIndex + 32];
 		shared[threadIndex + 1] += shared[threadIndex + 32 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 16 ) {
+	if( BlockSize >= 16 && threadIndex < 16 ) {
 		shared[threadIndex] += shared[threadIndex + 16];
 		shared[threadIndex + 1] += shared[threadIndex + 16 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 8 ) {
+	if( BlockSize >= 8 && threadIndex < 8 ) {
 		shared[threadIndex] += shared[threadIndex + 8];
 		shared[threadIndex + 1] += shared[threadIndex + 8 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 4 ) {
+	if( BlockSize >= 4 && threadIndex < 4 ) {
 		shared[threadIndex] += shared[threadIndex + 4];
 		shared[threadIndex + 1] += shared[threadIndex + 4 + 1];
 	}
 	__syncthreads();
-	if( threadIndex < 2 ) {
+	if( BlockSize >= 2 && threadIndex < 2 ) {
 		shared[threadIndex] += shared[threadIndex + 2];
 		shared[threadIndex + 1] += shared[threadIndex + 2 + 1];
 	}
@@ -102,7 +109,7 @@ __device__ void BlockReduceSumTwo( volatile NumericType* shared,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-__device__ NumericType LaplasOperator( cudaMatrix matrix, cudaUniformGrid grid, size_t x, size_t y )
+__device__ NumericType laplasOperator( cudaMatrix matrix, cudaUniformGrid grid, size_t x, size_t y )
 {
 	const NumericType ldx = ( matrix( x, y ) - matrix( x - 1, y ) ) / grid.X.Step( x - 1 );
 	const NumericType rdx = ( matrix( x + 1, y ) - matrix( x, y ) ) / grid.X.Step( x );
@@ -118,19 +125,19 @@ __device__ NumericType LaplasOperator( cudaMatrix matrix, cudaUniformGrid grid, 
 // Вычисление невязки rij во внутренних точках.
 __global__ void kernelCalcR( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
 {
-	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
-	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
-	
+	const size_t x = BlockDimX * blockIdx.x + threadIdx.x + 1;
+	const size_t y = BlockDimY * blockIdx.y + threadIdx.y + 1;
+
 	if( x < ( p.SizeX() - 1 ) && y < ( p.SizeY() - 1 ) ) {
-		r( x, y ) = LaplasOperator( p, grid, x, y ) - F( grid.X[x], grid.Y[y] );
+		r( x, y ) = laplasOperator( p, grid, x, y ) - F( grid.X[x], grid.Y[y] );
 	}
 }
 
 // Вычисление значений gij во внутренних точках.
 __global__ void kernelCalcG( cudaMatrix r, const NumericType alpha, cudaMatrix g )
 {
-	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
-	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
+	const size_t x = BlockDimX * blockIdx.x + threadIdx.x + 1;
+	const size_t y = BlockDimY * blockIdx.y + threadIdx.y + 1;
 
 	if( x < ( g.SizeX() - 1 ) && y < ( g.SizeY() - 1 ) ) {
 		g( x, y ) = r( x, y ) - alpha * g( x, y );
@@ -143,9 +150,9 @@ __global__ void kernelCalcP( cudaMatrix g, const NumericType tau, cudaMatrix p,
 {
 	extern __shared__ NumericType shared[];
 
-	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
-	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
-	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
+	const size_t x = BlockDimX * blockIdx.x + threadIdx.x + 1;
+	const size_t y = BlockDimY * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * BlockDimX + threadIdx.x;
 
 	NumericType difference = 0;
 	if( x < ( p.SizeX() - 1 ) && y < ( p.SizeY() - 1 ) ) {
@@ -154,7 +161,7 @@ __global__ void kernelCalcP( cudaMatrix g, const NumericType tau, cudaMatrix p,
 		p( x, y ) = newValue;
 	}
 
-	BlockReduceMax( shared, threadIndex, difference );
+	blockReduceMax( shared, threadIndex, difference );
 
 	if( threadIndex == 0 ) {
 		const size_t blockIndex = gridDim.x * blockIdx.y + blockIdx.x;
@@ -168,19 +175,19 @@ __global__ void kernelCalcAlpha( cudaMatrix r, cudaMatrix g, cudaUniformGrid gri
 {
 	extern __shared__ NumericType shared[];
 
-	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
-	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
-	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
+	const size_t x = BlockDimX * blockIdx.x + threadIdx.x + 1;
+	const size_t y = BlockDimY * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * BlockDimX + threadIdx.x;
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;
 	if( x < ( r.SizeX() - 1 ) && y < ( r.SizeY() - 1 ) ) {
 		const NumericType common = g( x, y ) * grid.X.AverageStep( x ) * grid.Y.AverageStep( y );
-		numerator = LaplasOperator( r, grid, x, y ) * common;
-		denominator = LaplasOperator( g, grid, x, y ) * common;
+		numerator = laplasOperator( r, grid, x, y ) * common;
+		denominator = laplasOperator( g, grid, x, y ) * common;
 	}
 
-	BlockReduceSumTwo( shared, threadIndex * 2, numerator, denominator );
+	blockReduceSumTwo( shared, threadIndex * 2, numerator, denominator );
 
 	if( threadIndex == 0 ) {
 		const size_t blockIndex = gridDim.x * blockIdx.y + blockIdx.x;
@@ -195,19 +202,19 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 {
 	extern __shared__ NumericType shared[];
 
-	const size_t x = blockDim.x * blockIdx.x + threadIdx.x + 1;
-	const size_t y = blockDim.y * blockIdx.y + threadIdx.y + 1;
-	const size_t threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
+	const size_t x = BlockDimX * blockIdx.x + threadIdx.x + 1;
+	const size_t y = BlockDimY * blockIdx.y + threadIdx.y + 1;
+	const size_t threadIndex = threadIdx.y * BlockDimX + threadIdx.x;
 
 	NumericType numerator = 0;
 	NumericType denominator = 0;
 	if( x < ( r.SizeX() - 1 ) && y < ( r.SizeY() - 1 ) ) {
 		const NumericType common = g( x, y ) * grid.X.AverageStep( x ) * grid.Y.AverageStep( y );
 		numerator = r( x, y ) * common;
-		denominator = LaplasOperator( g, grid, x, y ) * common;
+		denominator = laplasOperator( g, grid, x, y ) * common;
 	}
 
-	BlockReduceSumTwo( shared, threadIndex * 2, numerator, denominator );
+	blockReduceSumTwo( shared, threadIndex * 2, numerator, denominator );
 
 	if( threadIndex == 0 ) {
 		const size_t blockIndex = gridDim.x * blockIdx.y + blockIdx.x;
@@ -218,8 +225,7 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-const size_t SharedMemSize = BlockDim.x * BlockDim.y * sizeof( NumericType );
-const size_t SharedMem2Size = SharedMemSize * 2;
+namespace { // anonymous namespace
 
 inline NumericType CalcMax( cudaMatrix buffer )
 {
@@ -238,6 +244,10 @@ inline CFraction CalcFraction( cudaMatrix buffer )
 	const NumericType denominator = accumulate<CIterator, NumericType>( middle, values.end(), 0 );
 	return CFraction( numerator, denominator );
 }
+
+} // end of anonymous namespace
+
+///////////////////////////////////////////////////////////////////////////////
 
 // Вычисление невязки rij во внутренних точках.
 void CalcR( dim3 gridDim, cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
@@ -279,24 +289,3 @@ CFraction CalcTau( dim3 gridDim,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-
-#if 0
-
-__global__ void CalcRuni( cudaMatrix p, cudaUniformGrid grid, cudaMatrix r )
-{
-	const size_t xPerThread = 0;
-	const size_t yPerThread = 0;
-
-	size_t x = ( BlockSizeX * blockIdx.x + threadIdx.x ) * xPerThread;
-	const size_t xEnd = min( x + xPerThread, p.SizeX() );
-	size_t y = ( BlockSizeY * blockIdx.y + threadIdx.y ) * yPerThread;
-	const size_t yEnd = min( y + yPerThread, p.SizeY() );
-
-	for( ; x < xEnd; x++ ) {
-		for( ; y < yEnd; y++ ) {
-			r( x, y ) = LaplasOperator( p, grid, x, y ) - F( grid.X[x], grid.Y[y] );
-		}
-	}
-}
-
-#endif

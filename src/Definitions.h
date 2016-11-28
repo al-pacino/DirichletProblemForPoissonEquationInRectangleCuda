@@ -15,7 +15,8 @@ const NumericType DefaultEps = static_cast<NumericType>( 0.0001 );
 const CArea Area( -2, 2, -2, 2 );
 
 // CUDA блок.
-const dim3 BlockDim( 32, 16 );
+const size_t BlockDimX = 32;
+const size_t BlockDimY = 16;
 
 // Правая часть.
 __host__ __device__ inline NumericType F( NumericType x, NumericType y )

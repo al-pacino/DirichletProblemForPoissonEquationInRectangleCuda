@@ -146,9 +146,9 @@ private:
 
 void CBaseProgram::Initialze()
 {
-	// cuda grid dim
-	cudaGridDim.x = DivUp( grid.X.Size() - 2, BlockDim.x );
-	cudaGridDim.y = DivUp( grid.Y.Size() - 2, BlockDim.y );
+	// cuda grid dim (вычитаем 2 т.к. значения на границах вычислять не нужно).
+	cudaGridDim.x = DivUp( grid.X.Size() - 2, BlockDimX );
+	cudaGridDim.y = DivUp( grid.Y.Size() - 2, BlockDimY );
 
 	// cuda grid
 	cudaGrid.X.Allocate( grid.X );
