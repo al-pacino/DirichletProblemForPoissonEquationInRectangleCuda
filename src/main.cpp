@@ -134,8 +134,7 @@ protected:
 	cudaMatrix cudaP;
 	cudaMatrix cudaR;
 	cudaMatrix cudaG;
-	cudaMatrix cudaBuffer1; // auxiliary buffer 1
-	cudaMatrix cudaBuffer2; // auxiliary buffer 2
+	cudaMatrix cudaBuffer; // auxiliary buffer
 	cudaUniformGrid cudaGrid;
 
 	CBaseProgram() {}
@@ -155,14 +154,10 @@ void CBaseProgram::Initialze()
 	cudaGrid.X.Allocate( grid.X );
 	cudaGrid.Y.Allocate( grid.Y );
 
-	// cuda auxiliary buffers
+	// cuda auxiliary buffer
 	{
-		CMatrix tmp;
-		//tmp.Init( cudaGridDim.x * cudaGridDim.y, 2 );
-		tmp.Init( MultipleOfKFromN( 512, cudaGridDim.x * cudaGridDim.y ), 2 );
-		cudaBuffer1.Allocate( tmp );
-		tmp.Init( DivUp( cudaGridDim.x * cudaGridDim.y, 512 ), 2 );
-		cudaBuffer2.Allocate( tmp );
+		CMatrix buffer( cudaGridDim.x * cudaGridDim.y, 2 );
+		cudaBuffer.Allocate( buffer );
 	}
 
 	difference = numeric_limits<NumericType>::max();
@@ -212,8 +207,8 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 		cudaR.Allocate( r );
 
 		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
-		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer1, cudaBuffer2 );
-		difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer );
+		difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer );
 
 		cudaR.Dump( r );
 		cudaG.Allocate( r );
@@ -223,10 +218,10 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 	// Выполняем остальные итерации.
 	while( callback.BeginIteration() ) {
 		CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
-		const CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
+		const CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
 		CalcG( cudaGridDim, cudaR, alpha.Value(), cudaG );
-		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
-		difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+		const CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
+		difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer );
 
 		callback.EndIteration( difference );
 	}
@@ -467,10 +462,10 @@ void CProgram::iteration1()
 	CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
 	exchangeDefinitions.Exchange( cudaR );
 
-	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer1, cudaBuffer2 );
+	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaR, cudaGrid, cudaBuffer );
 	allReduceFraction( tau );
 
-	difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+	difference = CalcP( cudaGridDim, cudaR, tau.Value(), cudaP, cudaBuffer );
 	allReduceDifference();
 
 	cudaR.Dump( r );
@@ -484,16 +479,16 @@ void CProgram::iteration2()
 	CalcR( cudaGridDim, cudaP, cudaGrid, cudaR );
 	exchangeDefinitions.Exchange( cudaR );
 
-	CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
+	CFraction alpha = CalcAlpha( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
 	allReduceFraction( alpha );
 
 	CalcG( cudaGridDim, cudaR, alpha.Value(), cudaG );
 	exchangeDefinitions.Exchange( cudaG );
 
-	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer1, cudaBuffer2 );
+	CFraction tau = CalcTau( cudaGridDim, cudaR, cudaG, cudaGrid, cudaBuffer );
 	allReduceFraction( tau );
 
-	difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer1, cudaBuffer2 );
+	difference = CalcP( cudaGridDim, cudaG, tau.Value(), cudaP, cudaBuffer );
 	allReduceDifference();
 }
 

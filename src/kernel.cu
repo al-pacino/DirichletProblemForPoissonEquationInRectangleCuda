@@ -102,29 +102,6 @@ __device__ void BlockReduceSumTwo( volatile NumericType* shared,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-__global__ void ReduceMaxKernel( cudaMatrix arr, cudaMatrix result )
-{
-	extern __shared__ NumericType shared[];
-	const size_t index = blockDim.x * blockIdx.x + threadIdx.x;
-	BlockReduceMax( shared, threadIdx.x, arr( index, 0 ) );
-	if( threadIdx.x == 0 ) {
-		result( blockIdx.x, 0 ) = shared[0];
-	}
-}
-
-__global__ void ReduceSumTwoKernel( cudaMatrix arr2, cudaMatrix result )
-{
-	extern __shared__ NumericType shared[];
-	const size_t index = blockDim.x * blockIdx.x + threadIdx.x;
-	BlockReduceSumTwo( shared, threadIdx.x * 2, arr2( index, 0 ), arr2( index, 1 ) );
-	if( threadIdx.x == 0 ) {
-		result( blockIdx.x, 0 ) = shared[0];
-		result( blockIdx.x, 1 ) = shared[1];
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
 __device__ NumericType LaplasOperator( cudaMatrix matrix, cudaUniformGrid grid, size_t x, size_t y )
 {
 	const NumericType ldx = ( matrix( x, y ) - matrix( x - 1, y ) ) / grid.X.Step( x - 1 );
@@ -243,42 +220,22 @@ __global__ void kernelCalcTau( cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
 
 const size_t SharedMemSize = BlockDim.x * BlockDim.y * sizeof( NumericType );
 const size_t SharedMem2Size = SharedMemSize * 2;
-const dim3 LinearBlockDim( 512 );
-const size_t LinearSharedMemSize = LinearBlockDim.x * sizeof( NumericType );
-const size_t LinearSharedMem2Size = LinearSharedMemSize * 2;
 
-inline NumericType CalcMax( dim3 gridDim, cudaMatrix buffer1, cudaMatrix buffer2 )
+inline NumericType CalcMax( cudaMatrix buffer )
 {
-	//const dim3 linearGridDim( buffer2.SizeX() );
-	//ReduceMaxKernel<<<linearGridDim, LinearBlockDim, LinearSharedMemSize>>>( buffer1, buffer2 );
-	buffer2 = buffer1;
-
-	vector<NumericType> differences( buffer2.SizeX() );
-	buffer2.GetPart( CMatrixPart( 0, buffer2.SizeX(), 0, 1 ), differences );
-
-	NumericType difference = 0;
-	for( size_t i = 0; i < buffer2.SizeX(); i++ ) {
-		difference = max( difference, differences[i] );
-	}
-
-	return difference;
+	vector<NumericType> differences( buffer.SizeX() );
+	buffer.GetPart( CMatrixPart( 0, buffer.SizeX(), 0, 1 ), differences );
+	return *max_element( differences.begin(), differences.end() );
 }
 
-inline CFraction CalcFraction( dim3 gridDim, cudaMatrix buffer1, cudaMatrix buffer2 )
+inline CFraction CalcFraction( cudaMatrix buffer )
 {
-	//const dim3 linearGridDim( buffer2.SizeX() );
-	//ReduceSumTwoKernel<<<linearGridDim, LinearBlockDim, LinearSharedMem2Size>>>( buffer1, buffer2 );
-	buffer2 = buffer1;
-
-	vector<NumericType> values( buffer2.SizeX() * 2 );
-	buffer2.GetPart( CMatrixPart( 0, buffer2.SizeX(), 0, 2 ), values );
-
-	NumericType numerator = 0;
-	NumericType denominator = 0;
-	for( size_t i = 0; i < buffer2.SizeX(); i++ ) {
-		numerator += values[i];
-		denominator += values[i + buffer2.SizeX()];
-	}
+	vector<NumericType> values( buffer.SizeX() * 2 );
+	buffer.GetPart( CMatrixPart( 0, buffer.SizeX(), 0, 2 ), values );
+	typedef vector<NumericType>::const_iterator CIterator;
+	const CIterator middle = values.begin() + buffer.SizeX();
+	const NumericType numerator = accumulate<CIterator, NumericType>( values.begin(), middle, 0 );
+	const NumericType denominator = accumulate<CIterator, NumericType>( middle, values.end(), 0 );
 	return CFraction( numerator, denominator );
 }
 
@@ -297,28 +254,28 @@ void CalcG( dim3 gridDim, cudaMatrix r, const NumericType alpha, cudaMatrix g )
 // Вычисление значений pij во внутренних точках, возвращается максимум норма.
 NumericType CalcP( dim3 gridDim,
 	cudaMatrix g, const NumericType tau, cudaMatrix p,
-	cudaMatrix buffer1, cudaMatrix buffer2 )
+	cudaMatrix buffer )
 {
-	kernelCalcP<<<gridDim, BlockDim, SharedMemSize>>>( g, tau, p, buffer1 );
-	return CalcMax( gridDim, buffer1, buffer2 );
+	kernelCalcP<<<gridDim, BlockDim, SharedMemSize>>>( g, tau, p, buffer );
+	return CalcMax( buffer );
 }
 
 // Вычисление alpha.
 CFraction CalcAlpha( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
-	cudaMatrix buffer1, cudaMatrix buffer2 )
+	cudaMatrix buffer )
 {
-	kernelCalcAlpha<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, buffer1 );
-	return CalcFraction( gridDim, buffer1, buffer2 );
+	kernelCalcAlpha<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, buffer );
+	return CalcFraction( buffer );
 }
 
 // Вычисление tau.
 CFraction CalcTau( dim3 gridDim,
 	cudaMatrix r, cudaMatrix g, cudaUniformGrid grid,
-	cudaMatrix buffer1, cudaMatrix buffer2 )
+	cudaMatrix buffer )
 {
-	kernelCalcTau<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, buffer1 );
-	return CalcFraction( gridDim, buffer1, buffer2 );
+	kernelCalcTau<<<gridDim, BlockDim, SharedMem2Size>>>( r, g, grid, buffer );
+	return CalcFraction( buffer );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
