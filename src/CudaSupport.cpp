@@ -9,8 +9,8 @@ void SelectSuitableCudaDevice( ostream& out, size_t rank )
 {
 	int deviceCount = 0;
 	cudaCheck( cudaGetDeviceCount( &deviceCount ) );
-	out << "Number of cuda devices: " << deviceCount << endl;
-	out << endl;
+	out << "Number of cuda devices: " << deviceCount << endl << endl;
+
 	vector<int> suitableDevices;
 	for( int i = 0; i < deviceCount; i++ ) {
 		cudaDeviceProp deviceProp;
