@@ -5,35 +5,35 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void SelectSuitableCudaDevice( ostream& out )
+void SelectSuitableCudaDevice( ostream& out, size_t rank )
 {
 	int deviceCount = 0;
-	int suitableDevice = -1;
 	cudaCheck( cudaGetDeviceCount( &deviceCount ) );
 	out << "Number of cuda devices: " << deviceCount << endl;
 	out << endl;
+	vector<int> suitableDevices;
 	for( int i = 0; i < deviceCount; i++ ) {
 		cudaDeviceProp deviceProp;
 		cudaCheck( cudaGetDeviceProperties( &deviceProp, i ) );
 		out << "Device#" << left << setw( 13 ) << i
-			<< ": " << deviceProp.name << endl;
-		out << "Compute capability  : " << deviceProp.major
-			<< "." << deviceProp.minor << endl;
-		out << "Total global memory : " << deviceProp.totalGlobalMem << endl; 
-		out << endl;
+			<< ": " << deviceProp.name << endl
+			<< "Compute capability  : " << deviceProp.major
+			<< "." << deviceProp.minor << endl
+			<< "Total global memory : " << deviceProp.totalGlobalMem << endl
+			<< endl;
 
 		if( deviceProp.major == 2 /* && deviceProp.minor == 0 */ ) {
-			suitableDevice = i;
+			suitableDevices.push_back( i );
 		}
 	}
 
-	if( suitableDevice == -1 ) {
+	if( suitableDevices.empty() ) {
 		throw CException( "Suitable cuda device was not found!" );
 	}
-	cudaCheck( cudaSetDevice( suitableDevice ) );
 
-	out << "Device#" << suitableDevice << " has been selected." << endl;
-	out << endl;
+	const int suitableDevice = suitableDevices[rank % suitableDevices.size()];
+	cudaCheck( cudaSetDevice( suitableDevice ) );
+	out << "Device#" << suitableDevice << " has been selected." << endl << endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

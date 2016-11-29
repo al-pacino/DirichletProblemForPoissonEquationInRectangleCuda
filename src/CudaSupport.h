@@ -19,6 +19,6 @@
 	}
 
 // selects a cuda device which compute capability is 2.*
-void SelectSuitableCudaDevice( ostream& infoStream );
+void SelectSuitableCudaDevice( ostream& infoStream, size_t rank = 0 );
 
 ///////////////////////////////////////////////////////////////////////////////
