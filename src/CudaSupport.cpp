@@ -22,7 +22,7 @@ void SelectSuitableCudaDevice( ostream& out, size_t rank )
 			<< "Total global memory : " << deviceProp.totalGlobalMem << endl
 			<< endl;
 
-		if( deviceProp.major == 2 /* && deviceProp.minor == 0 */ ) {
+		if( deviceProp.major >= 2 ) {
 			suitableDevices.push_back( i );
 		}
 	}
