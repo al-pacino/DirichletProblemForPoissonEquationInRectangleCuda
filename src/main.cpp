@@ -98,8 +98,8 @@ void GetBeginEndPoints( const size_t numberOfPoints, const size_t numberOfBlocks
 NumericType TotalError( const CMatrix& p, const CUniformGrid& grid )
 {
 	NumericType error = 0;
-	for( size_t x = 0; x < p.SizeX(); x++ ) {
-		for( size_t y = 0; y < p.SizeY(); y++ ) {
+	for( size_t x = 1; x < p.SizeX() - 1; x++ ) {
+		for( size_t y = 1; y < p.SizeY() - 1; y++ ) {
 			error = max( error, abs( Phi( grid.X[x], grid.Y[y] ) - p( x, y ) ) );
 		}
 	}
@@ -121,9 +121,10 @@ void DumpMatrix( const CMatrix& matrix, const CUniformGrid& grid, ostream& outpu
 
 class CBaseProgram {
 public:
-	// Последовательная реализация.
-	static void Run( const size_t pointsX, const size_t pointsY, const CArea& area,
-		IIterationCallback& callback, const string& dumpFilename = "" );
+	// Последовательная реализация (возвращается норма разницы полученного и точного решения).
+	static NumericType Run( const size_t pointsX, const size_t pointsY,
+		const CArea& area, IIterationCallback& callback,
+		const string& dumpFilename = "" );
 
 protected:
 	CUniformGrid grid;
@@ -163,8 +164,9 @@ void CBaseProgram::Initialze()
 	difference = numeric_limits<NumericType>::max();
 }
 
-void CBaseProgram::Run( const size_t pointsX, const size_t pointsY, const CArea& area,
-	IIterationCallback& callback, const string& dumpFilename )
+NumericType CBaseProgram::Run( const size_t pointsX, const size_t pointsY,
+	const CArea& area, IIterationCallback& callback,
+	const string& dumpFilename )
 {
 	// Инициализируем grid.
 	CBaseProgram program;
@@ -176,6 +178,9 @@ void CBaseProgram::Run( const size_t pointsX, const size_t pointsY, const CArea&
 
 	// Запускаем последовательную реализацию.
 	program.run( callback, dumpFilename );
+
+	// Вычисляем норму разницы полученного и точного решения.
+	return TotalError( program.p, program.grid );
 }
 
 void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename )
@@ -185,7 +190,7 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 		return;
 	}
 
-	CMatrix p( grid.X.Size(), grid.Y.Size() );
+	p.Init( grid.X.Size(), grid.Y.Size() );
 	for( size_t x = 0; x < p.SizeX(); x++ ) {
 		p( x, 0 ) = Phi( grid.X[x], grid.Y[0] );
 		p( x, p.SizeY() - 1 ) = Phi( grid.X[x], grid.Y[p.SizeY() - 1] );
@@ -202,7 +207,6 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 		return;
 	}
 	{
-		//__debugbreak();
 		CMatrix r( grid.X.Size(), grid.Y.Size() );
 		cudaR.Allocate( r );
 
@@ -226,9 +230,10 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 		callback.EndIteration( difference );
 	}
 
+	// Копируем решение с устройства на хост.
 	cudaP.Dump( p );
-	cout << "Total error: " << TotalError( p, grid ) << endl;
 
+	// Сохраняем решение, если нужно.
 	if( !dumpFilename.empty() ) {
 		ofstream outputFile( dumpFilename.c_str() );
 		DumpMatrix( p, grid, outputFile );
@@ -239,7 +244,8 @@ void CBaseProgram::run( IIterationCallback& callback, const string& dumpFilename
 
 class CProgram : private CBaseProgram {
 public:
-	static void Run( size_t pointsX, size_t pointsY, const CArea& area,
+	// Параллельная реализация (возвращается норма разницы полученного и точного решения).
+	static NumericType Run( size_t pointsX, size_t pointsY, const CArea& area,
 		IIterationCallback& callback );
 
 private:
@@ -276,30 +282,38 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void CProgram::Run( size_t pointsX, size_t pointsY, const CArea& area,
+NumericType CProgram::Run( size_t pointsX, size_t pointsY, const CArea& area,
 	IIterationCallback& callback )
 {
 	CProgram program( pointsX, pointsY, area );
 
 	// Выполняем нулевую итерацию (инициализацию).
-	if( !callback.BeginIteration() ) {
-		return;
-	}
-	program.iteration0();
-	callback.EndIteration( program.difference );
-
-	// Выполняем первую итерацию.
-	if( !callback.BeginIteration() ) {
-		return;
-	}
-	program.iteration1();
-	callback.EndIteration( program.difference );
-
-	// Выполняем остальные итерации.
-	while( callback.BeginIteration() ) {
-		program.iteration2();
+	if( callback.BeginIteration() ) {
+		program.iteration0();
 		callback.EndIteration( program.difference );
+
+		// Выполняем первую итерацию.
+		if( callback.BeginIteration() ) {
+			program.iteration1();
+			callback.EndIteration( program.difference );
+
+			// Выполняем остальные итерации.
+			while( callback.BeginIteration() ) {
+				program.iteration2();
+				callback.EndIteration( program.difference );
+			}
+		}
 	}
+
+	// Копируем решение с устройства на хост.
+	program.cudaP.Dump( program.p );
+
+	// Вычисляем норму разницы полученного и точного решения.
+	NumericType localError = TotalError( program.p, program.grid );
+	NumericType totalError = 0;
+	MpiCheck( MPI_Reduce( &localError, &totalError, 1 /* count */,
+		MpiNumericType, MPI_MAX, 0 /* root */, MPI_COMM_WORLD ), "MPI_Reduce" );
+	return totalError;
 }
 
 CProgram::CProgram( size_t pointsX, size_t pointsY, const CArea& area ) :
@@ -517,7 +531,8 @@ void ParseArguments( const int argc, const char* const argv[],
 
 void Main( const int argc, const char* const argv[] )
 {
-	double programTime = 0.0;
+	double programTime = 0;
+	NumericType totalError = 0;
 	{
 		CMpiTimer timer( programTime );
 
@@ -539,12 +554,15 @@ void Main( const int argc, const char* const argv[] )
 		}
 
 		if( CMpiSupport::NumberOfProccess() == 1 ) {
-			CBaseProgram::Run( pointsX, pointsY, Area, *callback, dumpFilename );
+			totalError = CBaseProgram::Run( pointsX, pointsY, Area, *callback, dumpFilename );
 		} else {
-			CProgram::Run( pointsX, pointsY, Area, *callback );
+			totalError = CProgram::Run( pointsX, pointsY, Area, *callback );
 		}
 	}
 	cout << "(" << CMpiSupport::Rank() << ") Time: " << programTime << endl;
+	if( CMpiSupport::Rank() == 0 ) {
+		cout << "Total error: " << totalError << endl;
+	}
 }
 
 int main( int argc, char** argv )
